@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Voice Chat | Azure</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-slideIn { animation: slideIn 0.3s ease-out forwards; }
+        .delay-100 { animation-delay: 0.1s; }
+        .delay-200 { animation-delay: 0.2s; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 h-screen overflow-hidden relative font-sans">
+
+    <div class="absolute inset-0 overflow-hidden pointer-events-none">
+        <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse"></div>
+        <div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-pink-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse delay-700"></div>
+    </div>
+
+    <div class="flex flex-col h-full max-w-4xl mx-auto relative z-10">
+        <header class="backdrop-blur-xl bg-white/80 border-b border-purple-200 shadow-lg p-6 flex items-center justify-center gap-3">
+            <div class="relative">
+                <i data-lucide="sparkles" class="w-8 h-8 text-purple-600 animate-pulse"></i>
+            </div>
+            <h1 class="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">AI Voice Chat</h1>
+            <div id="speaking-indicator" class="hidden flex items-center gap-2 ml-4 px-3 py-1 bg-green-100 rounded-full animate-pulse">
+                <i data-lucide="volume-2" class="w-4 h-4 text-green-600"></i>
+                <span class="text-sm text-green-700 font-medium">Speaking...</span>
+            </div>
+        </header>
+
+        <main id="chat-container" class="flex-1 overflow-y-auto p-6 space-y-4">
+            <div id="empty-state" class="flex flex-col items-center justify-center h-full text-center space-y-4 opacity-60">
+                <i data-lucide="message-circle" class="w-16 h-16 text-purple-400"></i>
+                <p class="text-gray-600 text-lg">Connected to Azure OpenAI</p>
+                <p class="text-gray-500 text-sm">Use voice or text input</p>
+            </div>
+        </main>
+
+        <div id="loading-indicator" class="hidden px-6 pb-4">
+            <div class="flex gap-1 items-center bg-white/90 backdrop-blur w-fit px-4 py-2 rounded-2xl border border-purple-100 shadow-sm">
+                <div class="w-2 h-2 bg-purple-500 rounded-full animate-bounce"></div>
+                <div class="w-2 h-2 bg-pink-500 rounded-full animate-bounce delay-100"></div>
+                <div class="w-2 h-2 bg-indigo-500 rounded-full animate-bounce delay-200"></div>
+            </div>
+        </div>
+
+        <footer class="backdrop-blur-xl bg-white/80 border-t border-purple-200 shadow-2xl p-4">
+            <div class="flex gap-2 mb-3 justify-center">
+                <button id="mic-btn" class="flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-all duration-300 transform hover:scale-105 bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg">
+                    <i data-lucide="mic" class="w-5 h-5"></i>
+                    <span>Voice Input</span>
+                </button>
+                <button id="stop-btn" class="hidden flex items-center gap-2 px-4 py-2 rounded-full font-medium bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg transform hover:scale-105">
+                    <i data-lucide="volume-x" class="w-5 h-5"></i>
+                    Stop Speaking
+                </button>
+            </div>
+
+            <div class="flex gap-3">
+                <textarea id="text-input" placeholder="Type your message..." rows="2" class="flex-1 resize-none border-2 border-purple-200 rounded-2xl p-4 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white/90 backdrop-blur shadow-inner"></textarea>
+                <button id="send-btn" class="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 rounded-2xl hover:shadow-xl transition-all transform hover:scale-105 flex items-center gap-2 font-medium disabled:opacity-50">
+                    <i data-lucide="send" class="w-5 h-5"></i>
+                    Send
+                </button>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        const chatContainer = document.getElementById('chat-container');
+        const textInput = document.getElementById('text-input');
+        const sendBtn = document.getElementById('send-btn');
+        const micBtn = document.getElementById('mic-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const loadingBox = document.getElementById('loading-indicator');
+        const emptyState = document.getElementById('empty-state');
+        const speakingIndicator = document.getElementById('speaking-indicator');
+
+        const synth = window.speechSynthesis;
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = SpeechRecognition ? new SpeechRecognition() : null;
+        let isRecording = false;
+
+        function addMessage(content, role) {
+            emptyState.classList.add('hidden');
+            const div = document.createElement('div');
+            div.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'} animate-slideIn`;
+            
+            div.innerHTML = `
+                <div class="max-w-[80%] px-5 py-3 rounded-2xl text-sm shadow-lg ${
+                    role === 'user' 
+                    ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white rounded-br-none' 
+                    : 'bg-white/90 backdrop-blur text-gray-800 rounded-bl-none border border-purple-100'
+                }">
+                    <div class="whitespace-pre-wrap leading-relaxed">${content}</div>
+                </div>
+            `;
+            chatContainer.appendChild(div);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        async function handleSend() {
+            const message = textInput.value.trim();
+            if (!message) return;
+
+            addMessage(message, 'user');
+            textInput.value = '';
+            loadingBox.classList.remove('hidden');
+
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message })
+                });
+                const data = await response.json();
+                
+                loadingBox.classList.add('hidden');
+
+                if (data.error) throw new Error(data.error.message);
+
+                const aiResponse = data.choices[0].message.content;
+                addMessage(aiResponse, 'assistant');
+                
+                // Text to Speech
+                const utterance = new SpeechSynthesisUtterance(aiResponse);
+                utterance.onstart = () => { speakingIndicator.classList.remove('hidden'); stopBtn.classList.remove('hidden'); };
+                utterance.onend = () => { speakingIndicator.classList.add('hidden'); stopBtn.classList.add('hidden'); };
+                synth.speak(utterance);
+
+            } catch (err) {
+                loadingBox.classList.add('hidden');
+                addMessage("Error: " + err.message, 'assistant');
+            }
+        }
+
+        // Voice Input Logic
+        if (recognition) {
+            recognition.onresult = (e) => {
+                textInput.value = e.results[0][0].transcript;
+                toggleMic(false);
+            };
+            recognition.onend = () => toggleMic(false);
+        }
+
+        function toggleMic(state) {
+            isRecording = state !== undefined ? state : !isRecording;
+            if (isRecording) {
+                recognition?.start();
+                micBtn.classList.add('bg-red-500', 'animate-pulse');
+                micBtn.querySelector('span').innerText = "Stop Recording";
+            } else {
+                recognition?.stop();
+                micBtn.classList.remove('bg-red-500', 'animate-pulse');
+                micBtn.querySelector('span').innerText = "Voice Input";
+            }
+        }
+
+        sendBtn.addEventListener('click', handleSend);
+        micBtn.addEventListener('click', () => toggleMic());
+        stopBtn.addEventListener('click', () => synth.cancel());
+        textInput.addEventListener('keydown', (e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }});
+    </script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+replicaCount: 1
+
+image:
+  repository: aiagent.azurecr.io/ai-agent
+  tag: latest
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+
+ingress:
+  enabled: true
+  className: nginx
+  path: /

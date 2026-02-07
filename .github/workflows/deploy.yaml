@@ -1,0 +1,43 @@
+name: Deploy AI Agent to AKS
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  ACR_NAME: aiagent
+  IMAGE_NAME: ai-agent
+  RESOURCE_GROUP: ai-agent
+  AKS_NAME: ai-agent
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Build Image in ACR
+      run: |
+        az acr build \
+          --registry $ACR_NAME \
+          --image $IMAGE_NAME:latest \
+          .
+
+    - name: Get AKS Credentials
+      run: |
+        az aks get-credentials \
+          --resource-group $RESOURCE_GROUP \
+          --name $AKS_NAME \
+          --overwrite-existing
+
+    - name: Deploy with Helm
+      run: |
+        helm upgrade --install ai-agent ./helm/ai-agent-chart
